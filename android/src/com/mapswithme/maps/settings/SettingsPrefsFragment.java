@@ -31,6 +31,7 @@ import com.mapswithme.maps.editor.ProfileActivity;
 import com.mapswithme.maps.help.HelpActivity;
 import com.mapswithme.maps.location.LocationHelper;
 import com.mapswithme.maps.location.LocationProviderFactory;
+import com.mapswithme.maps.location.TrackRecorder;
 import com.mapswithme.maps.sound.LanguageData;
 import com.mapswithme.maps.sound.TtsPlayer;
 import com.mapswithme.util.Config;
@@ -41,6 +42,7 @@ import com.mapswithme.util.SharedPropertiesUtils;
 import com.mapswithme.util.ThemeSwitcher;
 import com.mapswithme.util.UiUtils;
 import com.mapswithme.util.Utils;
+import com.mapswithme.util.concurrency.UiThread;
 import com.mapswithme.util.log.LoggerFactory;
 
 import java.util.HashMap;
@@ -296,6 +298,7 @@ public class SettingsPrefsFragment extends BaseXmlSettingsFragment
     initTransliterationPrefsCallbacks();
     init3dModePrefsCallbacks();
     initPerspectivePrefsCallbacks();
+    initTrackRecordPrefsCallbacks();
     initAutoZoomPrefsCallbacks();
     initLoggingEnabledPrefsCallbacks();
     initEmulationBadStorage();
@@ -351,6 +354,7 @@ public class SettingsPrefsFragment extends BaseXmlSettingsFragment
   {
     super.onResume();
 
+    initTrackRecordPrefsCallbacks();
     updateTts();
   }
 
@@ -577,6 +581,68 @@ public class SettingsPrefsFragment extends BaseXmlSettingsFragment
       });
       return true;
     }
+  }
+
+  private void initTrackRecordPrefsCallbacks()
+  {
+    final ListPreference trackPref = findPreference(getString(R.string.pref_track_record));
+    final Preference pref = findPreference(getString(R.string.pref_track_record_time));
+    final Preference root = findPreference(getString(R.string.pref_track_screen));
+    if (trackPref == null || pref == null)
+      return;
+
+    boolean enabled = TrackRecorder.INSTANCE.isEnabled();
+    ((TwoStatePreference)pref).setChecked(enabled);
+    trackPref.setEnabled(enabled);
+    if (root != null)
+      root.setSummary(enabled ? R.string.on : R.string.off);
+    pref.setTitle(enabled ? R.string.on : R.string.off);
+    pref.setOnPreferenceChangeListener(new Preference.OnPreferenceChangeListener()
+    {
+      @Override
+      public boolean onPreferenceChange(Preference preference, Object newValue)
+      {
+        boolean enabled = (Boolean) newValue;
+        TrackRecorder.INSTANCE.setEnabled(enabled);
+        trackPref.setEnabled(enabled);
+        if (root != null)
+          root.setSummary(enabled ? R.string.on : R.string.off);
+        pref.setTitle(enabled ? R.string.on : R.string.off);
+        trackPref.performClick();
+        return true;
+      }
+    });
+
+    String value = (enabled ? String.valueOf(TrackRecorder.INSTANCE.getDuration()) : "0");
+    trackPref.setValue(value);
+    trackPref.setSummary(trackPref.getEntry());
+    trackPref.setOnPreferenceChangeListener(new Preference.OnPreferenceChangeListener()
+    {
+      @Override
+      public boolean onPreferenceChange(final Preference preference, Object newValue)
+      {
+        int value = Integer.valueOf((String)newValue);
+        boolean enabled = value != 0;
+        if (enabled)
+          TrackRecorder.INSTANCE.setDuration(value);
+        TrackRecorder.INSTANCE.setEnabled(enabled);
+        ((TwoStatePreference) pref).setChecked(enabled);
+        trackPref.setEnabled(enabled);
+        if (root != null)
+          root.setSummary(enabled ? R.string.on : R.string.off);
+        pref.setTitle(enabled ? R.string.on : R.string.off);
+
+        UiThread.runLater(new Runnable()
+        {
+          @Override
+          public void run()
+          {
+            trackPref.setSummary(trackPref.getEntry());
+          }
+        });
+        return true;
+      }
+    });
   }
 
   private void init3dModePrefsCallbacks()
